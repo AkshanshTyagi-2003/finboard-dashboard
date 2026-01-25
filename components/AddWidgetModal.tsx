@@ -110,30 +110,118 @@ const AddWidgetModal: React.FC<Props> = ({ isOpen, onClose, onSave, initialConfi
   }, [initialConfig, isOpen]);
 
   const testConnection = async () => {
-  if (!url) return;
-  setTesting(true);
-  setTestError(null);
+    setTesting(true);
+    setTestError(null);
+    setAvailableFields([]);
+    
+    try {
+      console.log("🔍 Testing API connection:", url);
+      const data = await universalFetcher(url);
+      setTestData(data);
 
-  try {
-    const data = await universalFetcher(url);
-    setTestData(data);
+      console.log("📊 Raw API Response:", data);
 
-    const fields = flattenKeys(
-      Array.isArray(data) ? data[0] : data
-    ).slice(0, 200); // hard limit for UI performance
+      let allFields: {path: string, value: any, isArray?: boolean}[] = [];
 
-    setAvailableFields(
-      fields.map(f => ({
-        ...f,
-        isArray: Array.isArray(f.value)
-      }))
-    );
-  } catch (e: any) {
-    setTestError(e.message || "API failed");
-  } finally {
-    setTesting(false);
-  }
-};
+      // CRITICAL FIX: Handle Twelve Data format FIRST
+      if (data.values && Array.isArray(data.values)) {
+        console.log("✅ Detected Twelve Data format");
+        
+        // Add the values array itself as a field
+        allFields.push({ 
+          path: 'values', 
+          value: `Array[${data.values.length}]`,
+          isArray: true
+        });
+
+        // Get individual fields from first item
+        if (data.values.length > 0) {
+          const firstItem = data.values[0];
+          Object.keys(firstItem).forEach(key => {
+            allFields.push({
+              path: `values.${key}`,
+              value: firstItem[key],
+              isArray: false
+            });
+          });
+        }
+      }
+      // Handle root array
+      else if (Array.isArray(data)) {
+        console.log("✅ Root is an array, length:", data.length);
+        allFields.push({ 
+          path: 'root', 
+          value: `Array[${data.length}]`,
+          isArray: true
+        });
+        
+        if (data.length > 0 && typeof data[0] === 'object') {
+          const firstItem = data[0];
+          Object.keys(firstItem).forEach(key => {
+            allFields.push({
+              path: key,
+              value: firstItem[key],
+              isArray: false
+            });
+          });
+        }
+      }
+      // Handle nested objects
+      else if (typeof data === 'object') {
+        const findArraysAndFields = (obj: any, prefix = ''): void => {
+          if (!obj || typeof obj !== 'object') return;
+          
+          Object.keys(obj).forEach((key) => {
+            const value = obj[key];
+            const currentPath = prefix ? `${prefix}.${key}` : key;
+            
+            if (Array.isArray(value)) {
+              console.log("✅ Found array at:", currentPath, "Length:", value.length);
+              allFields.push({ 
+                path: currentPath, 
+                value: `Array[${value.length}]`,
+                isArray: true
+              });
+              
+              // Add fields from first item of array
+              if (value.length > 0 && typeof value[0] === 'object') {
+                Object.keys(value[0]).forEach(itemKey => {
+                  allFields.push({
+                    path: `${currentPath}.${itemKey}`,
+                    value: value[0][itemKey],
+                    isArray: false
+                  });
+                });
+              }
+            } else if (value && typeof value === 'object') {
+              findArraysAndFields(value, currentPath);
+            } else {
+              allFields.push({
+                path: currentPath,
+                value: value,
+                isArray: false
+              });
+            }
+          });
+        };
+
+        findArraysAndFields(data);
+      }
+
+      console.log("🎯 Final combined fields:", allFields);
+      setAvailableFields(allFields);
+
+      if (allFields.length === 0) {
+        throw new Error("No readable data fields found");
+      }
+
+    } catch (err: any) {
+      console.error("❌ Test Error:", err);
+      setTestError(err.message || "Failed to connect to API");
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const addField = (path: string) => {
     if (!selectedFields.find(f => f.path === path)) {
@@ -173,7 +261,6 @@ const AddWidgetModal: React.FC<Props> = ({ isOpen, onClose, onSave, initialConfi
 
   if (!isOpen) return null;
 
-  // Filter fields using the isArray flag
   const filteredFields = availableFields.filter(f => {
     const matchesSearch = f.path.toLowerCase().includes(searchQuery.toLowerCase());
     const isArrayField = f.isArray === true;
@@ -193,7 +280,6 @@ const AddWidgetModal: React.FC<Props> = ({ isOpen, onClose, onSave, initialConfi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
       <div className={`border w-full max-w-2xl my-auto rounded-xl shadow-2xl flex flex-col animate-in fade-in zoom-in duration-300 ${modalClasses}`}>
-        {/* Header */}
         <div className={`px-6 py-4 border-b flex justify-between items-center ${isDarkMode ? 'bg-[#161b22] border-white/10' : 'bg-white border-gray-100'}`}>
           <h2 className="text-md font-bold tracking-tight">{initialConfig ? 'Edit Widget' : 'Add New Widget'}</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-red-500 transition-colors p-1 cursor-pointer">
@@ -203,8 +289,7 @@ const AddWidgetModal: React.FC<Props> = ({ isOpen, onClose, onSave, initialConfi
           </button>
         </div>
 
-        {/* Form Body */}
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
           <div className="space-y-2">
             <label className={`text-[11px] font-bold uppercase tracking-wider ${labelClasses}`}>Widget Name</label>
             <input 

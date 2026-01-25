@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, memo } from 'react';
 import { useStore } from '../store';
 import { WidgetConfig } from '../types';
 import { TrashIcon, RefreshIcon, SettingsIcon, DragIcon } from './Icons';
@@ -25,47 +25,50 @@ const Widget: React.FC<Props> = ({ config, onEdit }) => {
     listeners,
     setNodeRef,
     transform,
-    transition
+    transition,
+    isDragging
   } = useSortable({ id: config.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition
+    transition,
+    opacity: isDragging ? 0.5 : 1
   };
 
   const fetchData = useCallback(async (isAutoRefresh = false) => {
-    // Only show the global loading spinner if we don't have data yet
-    if (!isAutoRefresh && data === null) setLoading(true);
+    // Only show loading spinner on initial load
+    if (!isAutoRefresh && !data) setLoading(true);
     
     try {
       const cacheKey = config.apiUrl;
       
-      // 1. Check cache for immediate display (only on first load)
+      // Check cache first
       if (!data && !isAutoRefresh) {
         const cached = getCachedData(cacheKey);
         if (cached) {
+          console.log("✅ Using cached data for:", config.name);
           setData(cached);
           setLastUpdated(new Date());
           setLoading(false);
-          // We DON'T return here; we continue to fetch fresh data
         }
       }
 
-      // 2. Fetch fresh data from API
+      // Fetch fresh data
+      console.log("🔄 Fetching fresh data for:", config.name);
       const fetchedData = await universalFetcher(config.apiUrl);
       
       setData(fetchedData);
       setCachedData(cacheKey, fetchedData, config.refreshInterval);
       setLastUpdated(new Date());
       setError(null);
+      console.log("✅ Data fetched successfully for:", config.name);
     } catch (err: any) {
-      console.error("Widget fetch error:", err);
-      // Only show error if we have no data at all
+      console.error("❌ Widget fetch error:", err);
       if (!data) setError(err.message || "Failed to fetch data");
     } finally {
       setLoading(false);
     }
-  }, [config.apiUrl, config.refreshInterval, data]);
+  }, [config.apiUrl, config.refreshInterval, config.name, data]);
 
   useEffect(() => {
     fetchData();
@@ -137,4 +140,4 @@ const Widget: React.FC<Props> = ({ config, onEdit }) => {
   );
 };
 
-export default Widget;
+export default memo(Widget);

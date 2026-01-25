@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { useStore } from '../store';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Bar } from 'recharts';
 import { DisplayMode, WidgetConfig, ChartInterval } from '../types';
@@ -16,7 +16,7 @@ const EmptyState: React.FC<{
   description: string; 
   isDarkMode: boolean; 
   icon?: React.ReactNode 
-}> = ({ title, description, isDarkMode, icon }) => (
+}> = memo(({ title, description, isDarkMode, icon }) => (
   <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-3">
     <div className={`p-3 rounded-full ${isDarkMode ? 'bg-amber-500/10 text-amber-500' : 'bg-amber-50 text-amber-600'}`}>
       {icon || (
@@ -30,9 +30,9 @@ const EmptyState: React.FC<{
       <p className={`text-xs leading-relaxed max-w-[220px] mx-auto ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{description}</p>
     </div>
   </div>
-);
+));
 
-const Candlestick: React.FC<any> = (props) => {
+const Candlestick: React.FC<any> = memo((props) => {
   const { x, y, width, height, low, high, openClose } = props;
   if (openClose === undefined) return null;
   const isGrowing = openClose[1] > openClose[0];
@@ -62,7 +62,7 @@ const Candlestick: React.FC<any> = (props) => {
       />
     </g>
   );
-};
+});
 
 const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
   const { isDarkMode, updateWidget } = useStore();
@@ -72,76 +72,98 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
   const [tableSortField, setTableSortField] = useState<string | null>(null);
 
   const extractedData = useMemo(() => {
-  if (!data) return { array: [], fields: [], arrayPath: '' };
+    if (!data) return { array: [], fields: config.selectedFields, arrayPath: '' };
 
-  if (Array.isArray(data)) {
-    return { array: data, fields: config.selectedFields, arrayPath: '' };
-  }
+    console.log("📊 WidgetRenderer received data:", data);
 
-  for (const field of config.selectedFields) {
-    const val = getNestedValue(data, field.path);
-    if (Array.isArray(val)) {
-      return {
-        array: val,
-        fields: config.selectedFields.filter(f => f.path !== field.path),
-        arrayPath: field.path
+    // CRITICAL FIX: Handle Twelve Data API format properly
+    if (data.values && Array.isArray(data.values)) {
+      console.log("✅ Detected Twelve Data format with values array");
+      return { 
+        array: data.values, 
+        fields: config.selectedFields, 
+        arrayPath: 'values' 
       };
     }
+
+    if (Array.isArray(data)) {
+      console.log("✅ Detected root array");
+      return { array: data, fields: config.selectedFields, arrayPath: '' };
+    }
+
+    const arrayField = config.selectedFields.find(f => {
+      const val = getNestedValue(data, f.path);
+      return Array.isArray(val);
+    });
+
+    if (arrayField) {
+      const arr = getNestedValue(data, arrayField.path);
+      const otherFields = config.selectedFields.filter(f => f.path !== arrayField.path);
+      console.log("✅ Found array field:", arrayField.path);
+      return { array: arr || [], fields: otherFields, arrayPath: arrayField.path };
+    }
+
+    const arrayEntry = Object.entries(data).find(([_, v]) => Array.isArray(v));
+    if (arrayEntry) {
+      const [key, arr] = arrayEntry;
+      console.log("✅ Found array in data:", key);
+      return { array: arr as any[], fields: config.selectedFields, arrayPath: key };
+    }
+
+    return { array: [], fields: config.selectedFields, arrayPath: '' };
+  }, [data, config.selectedFields]);
+
+  if (!data) {
+    return (
+      <div className={`p-8 text-center text-sm italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+        Loading real-time data...
+      </div>
+    );
   }
 
-  return { array: [], fields: config.selectedFields, arrayPath: '' };
-}, [data, config.selectedFields]);
+  /* ---------------- CARD VIEW (OPTIMIZED) ---------------- */
+  if (config.displayMode === DisplayMode.CARD) {
+    let cardData = data;
+    
+    if (data.values && Array.isArray(data.values) && data.values.length > 0) {
+      cardData = data.values[0];
+    } else if (Array.isArray(data) && data.length > 0) {
+      cardData = data[0];
+    }
+    
+    return (
+      <div className="space-y-4 p-5">
+        {config.selectedFields.map((field) => {
+          let fieldValue;
+          
+          if (field.path.includes('.')) {
+            const pathParts = field.path.split('.');
+            const actualKey = pathParts[pathParts.length - 1];
+            fieldValue = cardData[actualKey] !== undefined ? cardData[actualKey] : getNestedValue(cardData, field.path);
+          } else {
+            fieldValue = cardData[field.path];
+          }
+          
+          return (
+            <div key={field.path} className={`flex justify-between items-center border-b pb-3 ${isDarkMode ? 'border-white/5' : 'border-gray-100'}`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                {field.label}
+              </span>
+              <span className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                {formatValue(fieldValue, field.format)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
-  /* ---------------- CARD VIEW (FIXED FOR TWELVE DATA & COINBASE) ---------------- */
-if (config.displayMode === DisplayMode.CARD) {
-  // Determine the data source for card view
-  let cardData = data;
-  
-  // If data has a 'values' array (Twelve Data format), use the first item
-  if (data.values && Array.isArray(data.values) && data.values.length > 0) {
-    cardData = data.values[0];
-  }
-  // If data is an array, use the first item
-  else if (Array.isArray(data) && data.length > 0) {
-    cardData = data[0];
-  }
-  // For Coinbase and other flat APIs, use data as-is
-  else {
-    cardData = data;
-  }
-  
-  return (
-    <div className="space-y-4 p-5">
-      {config.selectedFields.map((field) => {
-        let fieldValue;
-        
-        // For nested paths (like from arrays)
-        if (field.path.includes('.')) {
-          const pathParts = field.path.split('.');
-          const actualKey = pathParts[pathParts.length - 1];
-          fieldValue = cardData[actualKey] !== undefined ? cardData[actualKey] : getNestedValue(cardData, field.path);
-        } else {
-          // Direct field access (works for Coinbase flat structure)
-          fieldValue = cardData[field.path];
-        }
-        
-        return (
-          <div key={field.path} className={`flex justify-between items-center border-b pb-3 ${isDarkMode ? 'border-white/5' : 'border-gray-100'}`}>
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-              {field.label}
-            </span>
-            <span className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-              {formatValue(fieldValue, field.format)}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-  /* ---------------- TABLE VIEW ---------------- */
+  /* ---------------- TABLE VIEW (OPTIMIZED) ---------------- */
   if (config.displayMode === DisplayMode.TABLE) {
     const { array, fields, arrayPath } = extractedData;
+
+    console.log("📋 Table View - Array length:", array.length);
 
     if (array.length === 0) {
       return (
@@ -294,7 +316,7 @@ if (config.displayMode === DisplayMode.CARD) {
     const sampleItem = array[0] || {};
     const availableKeys = Object.keys(sampleItem);
     
-    let timeKey = availableKeys.find(k => k === 'time' || k === 'datetime') || availableKeys.find(k => 
+    let timeKey = availableKeys.find(k => k === 'datetime' || k === 'time') || availableKeys.find(k => 
       k.toLowerCase().includes('time') || 
       k.toLowerCase().includes('date') || 
       k.toLowerCase() === 'timestamp'
@@ -377,7 +399,7 @@ if (config.displayMode === DisplayMode.CARD) {
     const sampleItem = array[0] || {};
     const keys = Object.keys(sampleItem);
     
-    let timeKey = keys.find(k => k === 'time' || k === 'datetime') || keys.find(k => k.toLowerCase().includes('time') || k.toLowerCase().includes('date')) || keys[0];
+    let timeKey = keys.find(k => k === 'datetime' || k === 'time') || keys.find(k => k.toLowerCase().includes('time') || k.toLowerCase().includes('date')) || keys[0];
     let openKey = keys.find(k => k === 'open') || keys.find(k => k.toLowerCase() === 'open') || keys[1];
     let highKey = keys.find(k => k === 'high') || keys.find(k => k.toLowerCase() === 'high') || keys[2];
     let lowKey = keys.find(k => k === 'low') || keys.find(k => k.toLowerCase() === 'low') || keys[3];
@@ -453,4 +475,4 @@ if (config.displayMode === DisplayMode.CARD) {
   return null;
 };
 
-export default WidgetRenderer;
+export default memo(WidgetRenderer);
