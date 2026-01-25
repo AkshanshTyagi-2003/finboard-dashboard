@@ -33,15 +33,6 @@ export const universalFetcher = async (rawUrl: string) => {
       throw new Error(data.Note || data.Information || data.message || "API rate limit reached");
     }
 
-    // Transform Coinbase Exchange Rates - FLATTEN the nested structure
-    if (finalUrl.includes('coinbase.com') && data.data) {
-      // Return a flattened structure that's easier to work with
-      return {
-        currency: data.data.currency,
-        ...data.data.rates // Spread rates directly into the root
-      };
-    }
-
     // Transform Finnhub News Array
     if (Array.isArray(data) && data.length > 0 && data[0].headline) {
       return data.slice(0, 15).map((item: any) => ({
@@ -110,10 +101,5 @@ export const getTwelveData = async (symbol: string) => {
 
 export const getFinnhubData = async (symbol: string) => {
   const url = `https://finnhub.io/api/v1/quote?symbol=${symbol.toUpperCase()}`;
-  return await universalFetcher(url);
-};
-
-export const getCoinbaseRates = async (currency: string) => {
-  const url = `https://api.coinbase.com/v2/exchange-rates?currency=${currency.toUpperCase()}`;
   return await universalFetcher(url);
 };
