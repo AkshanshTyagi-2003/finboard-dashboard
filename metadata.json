@@ -1,0 +1,5 @@
+{
+  "name": "FinBoard - Customizable Finance Dashboard",
+  "description": "A powerful, real-time finance monitoring dashboard where users can build custom widgets by connecting to any financial API. Features include dynamic data mapping, drag-and-drop layout, and persistent storage.",
+  "requestFramePermissions": []
+}
