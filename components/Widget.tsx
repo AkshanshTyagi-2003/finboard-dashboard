@@ -35,7 +35,7 @@ const Widget: React.FC<Props> = ({ config, onEdit }) => {
 
   const fetchData = useCallback(async (isAutoRefresh = false) => {
     // Only show the global loading spinner if we don't have data yet
-    if (!isAutoRefresh && !data) setLoading(true);
+    if (!isAutoRefresh && data === null) setLoading(true);
     
     try {
       const cacheKey = config.apiUrl;

@@ -110,107 +110,30 @@ const AddWidgetModal: React.FC<Props> = ({ isOpen, onClose, onSave, initialConfi
   }, [initialConfig, isOpen]);
 
   const testConnection = async () => {
-    setTesting(true);
-    setTestError(null);
-    setAvailableFields([]);
-    
-    try {
-      const data = await universalFetcher(url);
-      setTestData(data);
+  if (!url) return;
+  setTesting(true);
+  setTestError(null);
 
-      console.log("🔍 Raw API Response:", data);
+  try {
+    const data = await universalFetcher(url);
+    setTestData(data);
 
-      let allFields: {path: string, value: any, isArray?: boolean}[] = [];
+    const fields = flattenKeys(
+      Array.isArray(data) ? data[0] : data
+    ).slice(0, 200); // hard limit for UI performance
 
-      // STEP 1: Recursively find ALL arrays in the response
-      const findArrays = (obj: any, prefix = ''): void => {
-        if (!obj || typeof obj !== 'object') return;
-        
-        // Handle if obj itself is an array at root
-        if (Array.isArray(obj)) {
-          console.log("✅ Root is an array, length:", obj.length);
-          if (!prefix) {
-            allFields.push({ 
-              path: 'root', 
-              value: `Array[${obj.length}]`,
-              isArray: true
-            });
-          }
-          return;
-        }
-        
-        Object.keys(obj).forEach((key) => {
-          const value = obj[key];
-          const currentPath = prefix ? `${prefix}.${key}` : key;
-          
-          if (Array.isArray(value)) {
-            console.log("✅ Found array at:", currentPath, "Length:", value.length);
-            // Store metadata, not the actual array
-            allFields.push({ 
-              path: currentPath, 
-              value: `Array[${value.length}]`,
-              isArray: true
-            });
-          } else if (value && typeof value === 'object') {
-            findArrays(value, currentPath);
-          }
-        });
-      };
-
-      findArrays(data);
-      
-      console.log("📊 All array fields found:", allFields);
-
-      // STEP 2: Get individual fields for Card/Chart view
-      let fieldsToFlatten = data;
-
-      if (url.includes('coinbase.com')) {
-        fieldsToFlatten = data;
-      }
-      else if (Array.isArray(data) && data.length > 0) {
-        fieldsToFlatten = data[0];
-      } 
-      else if (data.values && Array.isArray(data.values) && data.values.length > 0) {
-        fieldsToFlatten = data.values[0];
-      } 
-      else if (data.t && Array.isArray(data.t)) {
-        fieldsToFlatten = { 
-          time: data.t[0], 
-          close: data.c[0], 
-          open: data.o[0], 
-          high: data.h[0], 
-          low: data.l[0],
-          volume: data.v[0]
-        };
-      }
-
-      // Get individual fields
-      const individualFields = flattenKeys(fieldsToFlatten);
-      console.log("📋 Individual fields:", individualFields);
-
-      // STEP 3: Combine - arrays first, then individual fields
-      const combinedFields = [...allFields];
-      individualFields.forEach(field => {
-        if (!combinedFields.some(f => f.path === field.path)) {
-          combinedFields.push({ ...field, isArray: false });
-        }
-      });
-
-      console.log("🎯 Final combined fields:", combinedFields);
-
-      setAvailableFields(combinedFields);
-
-      if (combinedFields.length === 0) {
-        throw new Error("No readable data fields found");
-      }
-
-    } catch (err: any) {
-      console.error("❌ Test Error:", err);
-      setTestError(err.message || "Failed to connect to API");
-    } finally {
-      setTesting(false);
-    }
-  };
+    setAvailableFields(
+      fields.map(f => ({
+        ...f,
+        isArray: Array.isArray(f.value)
+      }))
+    );
+  } catch (e: any) {
+    setTestError(e.message || "API failed");
+  } finally {
+    setTesting(false);
+  }
+};
 
   const addField = (path: string) => {
     if (!selectedFields.find(f => f.path === path)) {

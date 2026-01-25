@@ -72,33 +72,25 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
   const [tableSortField, setTableSortField] = useState<string | null>(null);
 
   const extractedData = useMemo(() => {
-    if (!data) return { array: [], fields: config.selectedFields, arrayPath: '' };
+  if (!data) return { array: [], fields: [], arrayPath: '' };
 
-    if (Array.isArray(data)) {
-      return { array: data, fields: config.selectedFields, arrayPath: '' };
+  if (Array.isArray(data)) {
+    return { array: data, fields: config.selectedFields, arrayPath: '' };
+  }
+
+  for (const field of config.selectedFields) {
+    const val = getNestedValue(data, field.path);
+    if (Array.isArray(val)) {
+      return {
+        array: val,
+        fields: config.selectedFields.filter(f => f.path !== field.path),
+        arrayPath: field.path
+      };
     }
+  }
 
-    const arrayField = config.selectedFields.find(f => {
-      const val = getNestedValue(data, f.path);
-      return Array.isArray(val);
-    });
-
-    if (arrayField) {
-      const arr = getNestedValue(data, arrayField.path);
-      const otherFields = config.selectedFields.filter(f => f.path !== arrayField.path);
-      return { array: arr || [], fields: otherFields, arrayPath: arrayField.path };
-    }
-
-    const arrayEntry = Object.entries(data).find(([_, v]) => Array.isArray(v));
-    if (arrayEntry) {
-      const [key, arr] = arrayEntry;
-      return { array: arr as any[], fields: config.selectedFields, arrayPath: key };
-    }
-
-    return { array: [], fields: config.selectedFields, arrayPath: '' };
-  }, [data, config.selectedFields]);
-
-  if (!data) return <div className={`p-8 text-center text-sm italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Loading real-time data...</div>;
+  return { array: [], fields: config.selectedFields, arrayPath: '' };
+}, [data, config.selectedFields]);
 
   /* ---------------- CARD VIEW (FIXED FOR TWELVE DATA & COINBASE) ---------------- */
 if (config.displayMode === DisplayMode.CARD) {
