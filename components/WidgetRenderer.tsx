@@ -37,7 +37,7 @@ const EmptyState: React.FC<{
 const Candlestick: React.FC<any> = (props) => {
   const { x, y, width, height, low, high, openClose } = props;
   
-  if (openClose === undefined || !Array.isArray(openClose) || openClose.length < 2) return null;
+  if (!openClose || !Array.isArray(openClose) || openClose.length < 2) return null;
   
   const isGrowing = openClose[1] > openClose[0];
   const color = isGrowing ? '#10b981' : '#ef4444';
@@ -54,21 +54,40 @@ const Candlestick: React.FC<any> = (props) => {
 
 const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
   const { isDarkMode, updateWidget } = useStore();
+  
+  // CRITICAL FIX: Early return if data is null/undefined
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="text-center">
+          <div className={`text-4xl mb-3 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}>⏳</div>
+          <div className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Loading data...</div>
+        </div>
+      </div>
+    );
+  }
+  
   const [tableSearch, setTableSearch] = useState('');
   const [page, setPage] = useState(1);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [tableSortField, setTableSortField] = useState<string | null>(null);
 
   const extractedData = useMemo(() => {
-    if (!data) return { array: [], fields: config.selectedFields, arrayPath: '' };
+    if (!data || data === null) {
+      return { array: [], fields: config.selectedFields, arrayPath: '' };
+    }
 
     if (Array.isArray(data)) {
       return { array: data, fields: config.selectedFields, arrayPath: '' };
     }
 
     const arrayField = config.selectedFields.find(f => {
-      const val = getNestedValue(data, f.path);
-      return Array.isArray(val);
+      try {
+        const val = getNestedValue(data, f.path);
+        return Array.isArray(val);
+      } catch {
+        return false;
+      }
     });
 
     if (arrayField) {
@@ -94,13 +113,10 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
     return { array: [], fields: config.selectedFields, arrayPath: '' };
   }, [data, config.selectedFields]);
 
-  if (!data) return <div className="p-8 text-center text-gray-500">Loading real-time data...</div>;
-
   /* ---------------- CARD VIEW ---------------- */
   if (config.displayMode === DisplayMode.CARD) {
     let cardData = data;
 
-    // Handle different API response structures
     if (data?.values && Array.isArray(data.values) && data.values.length > 0) {
       cardData = data.values[0];
     } else if (Array.isArray(data) && data.length > 0) {
