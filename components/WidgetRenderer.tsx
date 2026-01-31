@@ -1,4 +1,4 @@
-import React, { useState, useMemo, memo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStore } from '../store';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Bar } from 'recharts';
 import { DisplayMode, WidgetConfig, ChartInterval } from '../types';
@@ -11,58 +11,46 @@ interface Props {
 
 const ROWS_PER_PAGE = 10;
 
-const EmptyState: React.FC<{ 
-  title: string; 
-  description: string; 
-  isDarkMode: boolean; 
-  icon?: React.ReactNode 
-}> = memo(({ title, description, isDarkMode, icon }) => (
-  <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-3">
-    <div className={`p-3 rounded-full ${isDarkMode ? 'bg-amber-500/10 text-amber-500' : 'bg-amber-50 text-amber-600'}`}>
+const EmptyState: React.FC<{
+  title: string;
+  description: string;
+  isDarkMode: boolean;
+  icon?: React.ReactNode
+}> = ({ title, description, isDarkMode, icon }) => (
+  <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+    <div className={`mb-4 ${isDarkMode ? 'text-gray-600' : 'text-gray-400'}`}>
       {icon || (
-        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
         </svg>
       )}
     </div>
-    <div className="space-y-1">
-      <h4 className={`text-sm font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{title}</h4>
-      <p className={`text-xs leading-relaxed max-w-[220px] mx-auto ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{description}</p>
-    </div>
+    <h3 className={`text-lg font-semibold mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+      {title}
+    </h3>
+    <p className={`text-sm ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+      {description}
+    </p>
   </div>
-));
+);
 
-const Candlestick: React.FC<any> = memo((props) => {
+const Candlestick: React.FC<any> = (props) => {
   const { x, y, width, height, low, high, openClose } = props;
-  if (openClose === undefined) return null;
+  
+  if (openClose === undefined || !Array.isArray(openClose) || openClose.length < 2) return null;
+  
   const isGrowing = openClose[1] > openClose[0];
   const color = isGrowing ? '#10b981' : '#ef4444';
   const ratio = Math.abs(height / (openClose[1] - openClose[0]));
 
   return (
     <g stroke={color} fill="none" strokeWidth="2">
-      <path
-        d={`
-          M ${x},${y}
-          L ${x},${y + height}
-          L ${x + width},${y + height}
-          L ${x + width},${y}
-          L ${x},${y}
-        `}
-        fill={color}
-        fillOpacity={0.8}
-      />
-      <path
-        d={`
-          M ${x + width / 2}, ${y + height + (low - Math.min(openClose[0], openClose[1])) * ratio}
-          L ${x + width / 2}, ${y + height}
-          M ${x + width / 2}, ${y}
-          L ${x + width / 2}, ${y - (high - Math.max(openClose[0], openClose[1])) * ratio}
-        `}
-      />
+      <path d={`M ${x},${y} L ${x},${y + height}`} />
+      <path d={`M ${x - width / 2},${y + (openClose[0] - low) * ratio} L ${x + width / 2},${y + (openClose[0] - low) * ratio}`} />
+      <rect x={x - width / 2} y={y} width={width} height={height} fill={color} />
     </g>
   );
-});
+};
 
 const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
   const { isDarkMode, updateWidget } = useStore();
@@ -74,20 +62,7 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
   const extractedData = useMemo(() => {
     if (!data) return { array: [], fields: config.selectedFields, arrayPath: '' };
 
-    console.log("📊 WidgetRenderer received data:", data);
-
-    // CRITICAL FIX: Handle Twelve Data API format properly
-    if (data.values && Array.isArray(data.values)) {
-      console.log("✅ Detected Twelve Data format with values array");
-      return { 
-        array: data.values, 
-        fields: config.selectedFields, 
-        arrayPath: 'values' 
-      };
-    }
-
     if (Array.isArray(data)) {
-      console.log("✅ Detected root array");
       return { array: data, fields: config.selectedFields, arrayPath: '' };
     }
 
@@ -99,59 +74,62 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
     if (arrayField) {
       const arr = getNestedValue(data, arrayField.path);
       const otherFields = config.selectedFields.filter(f => f.path !== arrayField.path);
-      console.log("✅ Found array field:", arrayField.path);
-      return { array: arr || [], fields: otherFields, arrayPath: arrayField.path };
+      return {
+        array: Array.isArray(arr) ? arr : [],
+        fields: otherFields,
+        arrayPath: arrayField.path
+      };
     }
 
     const arrayEntry = Object.entries(data).find(([_, v]) => Array.isArray(v));
     if (arrayEntry) {
       const [key, arr] = arrayEntry;
-      console.log("✅ Found array in data:", key);
-      return { array: arr as any[], fields: config.selectedFields, arrayPath: key };
+      return {
+        array: Array.isArray(arr) ? arr : [],
+        fields: config.selectedFields,
+        arrayPath: key
+      };
     }
 
     return { array: [], fields: config.selectedFields, arrayPath: '' };
   }, [data, config.selectedFields]);
 
-  if (!data) {
-    return (
-      <div className={`p-8 text-center text-sm italic ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-        Loading real-time data...
-      </div>
-    );
-  }
+  if (!data) return <div className="p-8 text-center text-gray-500">Loading real-time data...</div>;
 
-  /* ---------------- CARD VIEW (OPTIMIZED) ---------------- */
+  /* ---------------- CARD VIEW ---------------- */
   if (config.displayMode === DisplayMode.CARD) {
     let cardData = data;
-    
-    if (data.values && Array.isArray(data.values) && data.values.length > 0) {
+
+    // Handle different API response structures
+    if (data?.values && Array.isArray(data.values) && data.values.length > 0) {
       cardData = data.values[0];
     } else if (Array.isArray(data) && data.length > 0) {
       cardData = data[0];
     }
-    
+
     return (
-      <div className="space-y-4 p-5">
+      <div className="grid grid-cols-2 gap-4 p-6">
         {config.selectedFields.map((field) => {
           let fieldValue;
-          
+
           if (field.path.includes('.')) {
             const pathParts = field.path.split('.');
             const actualKey = pathParts[pathParts.length - 1];
-            fieldValue = cardData[actualKey] !== undefined ? cardData[actualKey] : getNestedValue(cardData, field.path);
+            fieldValue = cardData?.[actualKey] !== undefined 
+              ? cardData[actualKey] 
+              : getNestedValue(cardData, field.path);
           } else {
-            fieldValue = cardData[field.path];
+            fieldValue = cardData?.[field.path];
           }
-          
+
           return (
-            <div key={field.path} className={`flex justify-between items-center border-b pb-3 ${isDarkMode ? 'border-white/5' : 'border-gray-100'}`}>
-              <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            <div key={field.path} className="text-center">
+              <div className={`text-xs uppercase tracking-wider mb-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 {field.label}
-              </span>
-              <span className={`text-sm font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              </div>
+              <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                 {formatValue(fieldValue, field.format)}
-              </span>
+              </div>
             </div>
           );
         })}
@@ -159,18 +137,16 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
     );
   }
 
-  /* ---------------- TABLE VIEW (OPTIMIZED) ---------------- */
+  /* ---------------- TABLE VIEW ---------------- */
   if (config.displayMode === DisplayMode.TABLE) {
     const { array, fields, arrayPath } = extractedData;
 
-    console.log("📋 Table View - Array length:", array.length);
-
     if (array.length === 0) {
       return (
-        <EmptyState 
+        <EmptyState
           isDarkMode={isDarkMode}
-          title="No table data found"
-          description="Please select an array field when testing the API."
+          title="No table data available"
+          description="Select an array field to display table data"
         />
       );
     }
@@ -178,15 +154,20 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
     let processedRows = array.filter(item => {
       if (!tableSearch) return true;
       const searchStr = tableSearch.toLowerCase();
-      return Object.values(item || {}).some(val => 
+      return Object.values(item || {}).some(val =>
         String(val).toLowerCase().includes(searchStr)
       );
     });
 
     if (tableSortField) {
       processedRows = [...processedRows].sort((a, b) => {
-        const aVal = getNestedValue(a, tableSortField.startsWith(arrayPath + '.') ? tableSortField.slice(arrayPath.length + 1) : tableSortField);
-        const bVal = getNestedValue(b, tableSortField.startsWith(arrayPath + '.') ? tableSortField.slice(arrayPath.length + 1) : tableSortField);
+        const aVal = getNestedValue(a, tableSortField.startsWith(arrayPath + '.') 
+          ? tableSortField.slice(arrayPath.length + 1) 
+          : tableSortField);
+        const bVal = getNestedValue(b, tableSortField.startsWith(arrayPath + '.') 
+          ? tableSortField.slice(arrayPath.length + 1) 
+          : tableSortField);
+        
         if (aVal === bVal) return 0;
         const result = aVal > bVal ? 1 : -1;
         return sortOrder === 'asc' ? result : -result;
@@ -194,12 +175,15 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
     }
 
     const totalPages = Math.ceil(processedRows.length / ROWS_PER_PAGE);
-    const paginatedRows = processedRows.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE);
+    const paginatedRows = processedRows.slice(
+      (page - 1) * ROWS_PER_PAGE,
+      page * ROWS_PER_PAGE
+    );
 
-    const columns = fields.length > 0 
-      ? fields 
-      : Object.keys(array[0] || {}).slice(0, 5).map(k => ({ 
-          path: k, 
+    const columns = fields.length > 0
+      ? fields
+      : Object.keys(array[0] || {}).slice(0, 5).map(k => ({
+          path: k,
           label: k,
           format: 'text' as const
         }));
@@ -214,55 +198,65 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
     };
 
     return (
-      <div className="flex flex-col h-full overflow-hidden">
-        <div className={`px-4 py-3 flex justify-between items-center border-b ${isDarkMode ? 'bg-[#161b22]/60 border-white/5' : 'bg-gray-50 border-gray-100'}`}>
-          <div className="relative w-full max-w-xs">
-             <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                <svg className="w-3.5 h-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-             </div>
-             <input 
-               type="text" 
-               placeholder="Search table..."
-               value={tableSearch}
-               onChange={e => { setTableSearch(e.target.value); setPage(1); }}
-               className={`w-full border rounded-md pl-9 pr-3 py-1.5 text-xs outline-none focus:border-emerald-500/50 ${isDarkMode ? 'bg-[#0d1117] border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
-             />
+      <div className="p-4">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="relative flex-1">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search table..."
+              value={tableSearch}
+              onChange={(e) => {
+                setTableSearch(e.target.value);
+                setPage(1);
+              }}
+              className={`w-full border rounded-md pl-9 pr-3 py-1.5 text-xs outline-none focus:border-emerald-500/50 ${
+                isDarkMode ? 'bg-[#0d1117] border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900'
+              }`}
+            />
           </div>
-          <span className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>{processedRows.length} items</span>
+          <div className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            {processedRows.length} items
+          </div>
         </div>
 
-        <div className={`flex-1 overflow-auto custom-scrollbar ${isDarkMode ? 'bg-[#0d1117]/30' : 'bg-white'}`}>
-          <table className="w-full text-left text-xs border-collapse">
-            <thead className={`sticky top-0 z-10 border-b ${isDarkMode ? 'bg-[#1c2128] text-gray-400 border-white/5' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+        <div className="overflow-x-auto rounded-lg border" style={{ borderColor: isDarkMode ? 'rgba(255,255,255,0.05)' : '#e5e7eb' }}>
+          <table className="w-full text-xs">
+            <thead className={isDarkMode ? 'bg-[#161b22]' : 'bg-gray-50'}>
               <tr>
                 {columns.map(col => (
-                  <th 
-                    key={col.path} 
+                  <th
+                    key={col.path}
                     onClick={() => handleTableSort(col.path)}
                     className="px-5 py-3 font-semibold uppercase tracking-wider whitespace-nowrap cursor-pointer text-center"
                   >
                     <div className="flex items-center justify-center gap-1">
                       {col.label}
                       {tableSortField === col.path && (
-                        <span className="text-[10px]">{sortOrder === 'asc' ? '▲' : '▼'}</span>
+                        <span className="text-emerald-500">
+                          {sortOrder === 'asc' ? '▲' : '▼'}
+                        </span>
                       )}
                     </div>
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className={`divide-y ${isDarkMode ? 'divide-white/5' : 'divide-gray-100'}`}>
+            <tbody>
               {paginatedRows.map((item, idx) => (
-                <tr key={idx} className={`transition-colors cursor-default ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50'}`}>
+                <tr
+                  key={idx}
+                  className={isDarkMode ? 'border-t border-white/5 hover:bg-white/[0.02]' : 'border-t border-gray-100 hover:bg-gray-50'}
+                >
                   {columns.map(col => {
-                    const relativePath = col.path.startsWith(arrayPath + '.') 
-                      ? col.path.slice(arrayPath.length + 1) 
+                    const relativePath = col.path.startsWith(arrayPath + '.')
+                      ? col.path.slice(arrayPath.length + 1)
                       : col.path;
                     const val = getNestedValue(item, relativePath);
                     return (
-                      <td key={col.path} className={`px-5 py-3 text-center ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      <td key={col.path} className="px-5 py-3 whitespace-nowrap text-center">
                         {formatValue(val, col.format)}
                       </td>
                     );
@@ -274,21 +268,29 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
         </div>
 
         {totalPages > 1 && (
-          <div className={`flex items-center justify-between px-4 py-3 border-t text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'bg-[#161b22]/60 border-white/5 text-gray-500' : 'bg-gray-50 border-gray-100 text-gray-400'}`}>
+          <div className="flex items-center justify-center gap-4 mt-4">
             <button
               onClick={() => setPage(p => Math.max(p - 1, 1))}
               disabled={page === 1}
-              className={`px-3 py-1 rounded border transition-colors ${isDarkMode ? 'border-white/10 hover:bg-white/5 disabled:opacity-20' : 'border-gray-200 hover:bg-gray-100 disabled:opacity-30'}`}
+              className={`px-3 py-1 rounded border transition-colors ${
+                isDarkMode 
+                  ? 'border-white/10 hover:bg-white/5 disabled:opacity-20' 
+                  : 'border-gray-200 hover:bg-gray-100 disabled:opacity-30'
+              }`}
             >
               Prev
             </button>
-            <span className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
+            <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               Page {page} of {totalPages}
-            </span>
+            </div>
             <button
               onClick={() => setPage(p => Math.min(p + 1, totalPages))}
               disabled={page === totalPages}
-              className={`px-3 py-1 rounded border transition-colors ${isDarkMode ? 'border-white/10 hover:bg-white/5 disabled:opacity-20' : 'border-gray-200 hover:bg-gray-100 disabled:opacity-30'}`}
+              className={`px-3 py-1 rounded border transition-colors ${
+                isDarkMode 
+                  ? 'border-white/10 hover:bg-white/5 disabled:opacity-20' 
+                  : 'border-gray-200 hover:bg-gray-100 disabled:opacity-30'
+              }`}
             >
               Next
             </button>
@@ -304,62 +306,83 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
 
     if (array.length === 0) {
       return (
-        <EmptyState 
+        <EmptyState
           isDarkMode={isDarkMode}
           title="No chart data available"
-          description="Charts require at least one numeric field."
-          icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>}
+          description="Select fields with numeric data to display a chart"
+          icon={
+            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          }
         />
       );
     }
 
     const sampleItem = array[0] || {};
     const availableKeys = Object.keys(sampleItem);
-    
-    let timeKey = availableKeys.find(k => k === 'datetime' || k === 'time') || availableKeys.find(k => 
-      k.toLowerCase().includes('time') || 
-      k.toLowerCase().includes('date') || 
-      k.toLowerCase() === 'timestamp'
-    ) || availableKeys[0];
-    
-    let valueKey = availableKeys.find(k => k === 'close') || availableKeys.find(k => 
-      k !== timeKey && !isNaN(parseFloat(sampleItem[k])) &&
-      (k.toLowerCase().includes('price') || k.toLowerCase().includes('close'))
-    ) || availableKeys[1];
 
-    let processedData = array.map((item, index) => {
-      const yValue = parseFloat(item[valueKey]);
-      const xValue = item[timeKey];
-      return {
-        time: xValue,
-        value: isNaN(yValue) ? null : yValue,
-        timestamp: typeof xValue === 'number' ? xValue : index
-      };
-    }).filter(item => item.value !== null).sort((a, b) => sortOrder === 'asc' ? a.timestamp - b.timestamp : b.timestamp - a.timestamp).slice(-100);
+    let timeKey = availableKeys.find(k => k === 'time' || k === 'datetime')
+      || availableKeys.find(k => 
+        k.toLowerCase().includes('time') || 
+        k.toLowerCase().includes('date') || 
+        k.toLowerCase() === 'timestamp'
+      )
+      || availableKeys[0];
+
+    let valueKey = availableKeys.find(k => k === 'close')
+      || availableKeys.find(k => 
+        k !== timeKey && 
+        !isNaN(parseFloat(sampleItem[k])) &&
+        (k.toLowerCase().includes('price') || k.toLowerCase().includes('close'))
+      )
+      || availableKeys[1];
+
+    let processedData = array
+      .map((item, index) => {
+        const yValue = parseFloat(item?.[valueKey]);
+        const xValue = item?.[timeKey];
+        return {
+          time: xValue,
+          value: isNaN(yValue) ? null : yValue,
+          timestamp: typeof xValue === 'number' ? xValue : index
+        };
+      })
+      .filter(item => item.value !== null)
+      .sort((a, b) => sortOrder === 'asc' ? a.timestamp - b.timestamp : b.timestamp - a.timestamp)
+      .slice(-100);
 
     const chartData = processedData.map((item) => ({
       ...item,
       displayTime: typeof item.time === 'number' && item.time > 1000000000
-        ? new Date(item.time * (item.time > 10000000000 ? 1 : 1000)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+        ? new Date(item.time * (item.time > 10000000000 ? 1 : 1000)).toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })
         : item.time
     }));
 
     return (
-      <div className="flex flex-col h-full">
-        <div className={`px-4 py-2 flex justify-between items-center border-b ${isDarkMode ? 'border-white/5' : 'border-gray-100'}`}>
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
           <button
             onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
             className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold text-gray-500 uppercase"
           >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+            </svg>
             {sortOrder === 'asc' ? 'ASC' : 'DESC'}
           </button>
-          <div className="flex items-center gap-1">
+          <div className="flex gap-1">
             {['1D', '1W', '1M', '1Y'].map((int) => (
               <button
                 key={int}
                 onClick={() => updateWidget({ ...config, interval: int as ChartInterval })}
                 className={`px-2 py-1 text-[10px] font-bold rounded ${
-                  (config.interval || '1D') === int ? 'bg-emerald-500 text-white' : 'text-gray-400'
+                  (config.interval || '1D') === int
+                    ? 'bg-emerald-500 text-white'
+                    : 'text-gray-400'
                 }`}
               >
                 {int}
@@ -367,17 +390,35 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
             ))}
           </div>
         </div>
-        <div className="h-64 w-full p-6">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? "#ffffff05" : "#00000008"} vertical={false} />
-              <XAxis dataKey="displayTime" stroke="#6b7280" fontSize={10} axisLine={false} tickLine={false} minTickGap={50} />
-              <YAxis stroke="#6b7280" fontSize={10} axisLine={false} tickLine={false} domain={['auto', 'auto']} />
-              <Tooltip contentStyle={{ backgroundColor: isDarkMode ? '#0d1117' : '#ffffff', border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderRadius: '6px', fontSize: '11px' }} />
-              <Line type="monotone" dataKey="value" stroke="#00d09c" strokeWidth={2.5} dot={false} connectNulls />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#30363d' : '#e5e7eb'} />
+            <XAxis 
+              dataKey="displayTime" 
+              stroke={isDarkMode ? '#8b949e' : '#6b7280'} 
+              tick={{ fontSize: 10 }}
+            />
+            <YAxis 
+              stroke={isDarkMode ? '#8b949e' : '#6b7280'} 
+              tick={{ fontSize: 10 }}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: isDarkMode ? '#161b22' : '#fff',
+                border: `1px solid ${isDarkMode ? '#30363d' : '#e5e7eb'}`,
+                borderRadius: '6px',
+                fontSize: '11px'
+              }}
+            />
+            <Line 
+              type="monotone" 
+              dataKey="value" 
+              stroke="#10b981" 
+              strokeWidth={2} 
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     );
   }
@@ -388,60 +429,78 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
 
     if (array.length === 0) {
       return (
-        <EmptyState 
+        <EmptyState
           isDarkMode={isDarkMode}
-          title="No candlestick data available"
-          description="Requires OHLC (Open, High, Low, Close) fields."
+          title="No candlestick data"
+          description="Requires open, high, low, close fields"
         />
       );
     }
 
     const sampleItem = array[0] || {};
     const keys = Object.keys(sampleItem);
-    
-    let timeKey = keys.find(k => k === 'datetime' || k === 'time') || keys.find(k => k.toLowerCase().includes('time') || k.toLowerCase().includes('date')) || keys[0];
+
+    let timeKey = keys.find(k => k === 'time' || k === 'datetime')
+      || keys.find(k => k.toLowerCase().includes('time') || k.toLowerCase().includes('date'))
+      || keys[0];
+
     let openKey = keys.find(k => k === 'open') || keys.find(k => k.toLowerCase() === 'open') || keys[1];
     let highKey = keys.find(k => k === 'high') || keys.find(k => k.toLowerCase() === 'high') || keys[2];
     let lowKey = keys.find(k => k === 'low') || keys.find(k => k.toLowerCase() === 'low') || keys[3];
     let closeKey = keys.find(k => k === 'close') || keys.find(k => k.toLowerCase() === 'close') || keys[4];
 
-    const candlestickData = array.slice(0, 50).map(item => {
-      const open = parseFloat(item[openKey]);
-      const high = parseFloat(item[highKey]);
-      const low = parseFloat(item[lowKey]);
-      const close = parseFloat(item[closeKey]);
-      const rawTime = item[timeKey];
-      
-      let formattedTime = rawTime;
-      if (typeof rawTime === 'number' && rawTime > 1000000) {
-        const date = new Date(rawTime * (rawTime > 10000000000 ? 1 : 1000));
-        formattedTime = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      }
-      
-      return {
-        time: formattedTime,
-        open, high, low, close,
-        openClose: [open, close],
-        rawTime: typeof rawTime === 'number' ? rawTime : 0
-      };
-    }).filter(item => !isNaN(item.open)).sort((a, b) => sortOrder === 'asc' ? a.rawTime - b.rawTime : b.rawTime - a.rawTime);
+    const candlestickData = array
+      .slice(0, 50)
+      .map(item => {
+        const open = parseFloat(item?.[openKey]);
+        const high = parseFloat(item?.[highKey]);
+        const low = parseFloat(item?.[lowKey]);
+        const close = parseFloat(item?.[closeKey]);
+        const rawTime = item?.[timeKey];
+
+        let formattedTime = rawTime;
+        if (typeof rawTime === 'number' && rawTime > 1000000) {
+          const date = new Date(rawTime * (rawTime > 10000000000 ? 1 : 1000));
+          formattedTime = date.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          });
+        }
+
+        return {
+          time: formattedTime,
+          open,
+          high,
+          low,
+          close,
+          openClose: [open, close],
+          rawTime: typeof rawTime === 'number' ? rawTime : 0
+        };
+      })
+      .filter(item => !isNaN(item.open))
+      .sort((a, b) => sortOrder === 'asc' ? a.rawTime - b.rawTime : b.rawTime - a.rawTime);
 
     return (
-      <div className="flex flex-col h-full">
-        <div className={`px-4 py-2 flex justify-between items-center border-b ${isDarkMode ? 'border-white/5' : 'border-gray-100'}`}>
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
           <button
             onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
             className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold text-gray-500 uppercase"
           >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+            </svg>
             {sortOrder === 'asc' ? 'ASC' : 'DESC'}
           </button>
-          <div className="flex items-center gap-1">
+          <div className="flex gap-1">
             {['1D', '1W', '1M', '1Y'].map((int) => (
               <button
                 key={int}
                 onClick={() => updateWidget({ ...config, interval: int as ChartInterval })}
                 className={`px-2 py-1 text-[10px] font-bold rounded ${
-                  (config.interval || '1D') === int ? 'bg-emerald-500 text-white' : 'text-gray-400'
+                  (config.interval || '1D') === int
+                    ? 'bg-emerald-500 text-white'
+                    : 'text-gray-400'
                 }`}
               >
                 {int}
@@ -449,25 +508,34 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
             ))}
           </div>
         </div>
-
-        <div className="h-64 w-full p-6">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={candlestickData}>
-              <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? "#ffffff05" : "#00000008"} vertical={false} />
-              <XAxis dataKey="time" stroke="#6b7280" fontSize={10} axisLine={false} tickLine={false} />
-              <YAxis 
-                stroke="#6b7280" 
-                fontSize={10} 
-                axisLine={false} 
-                tickLine={false} 
-                domain={['auto', 'auto']} 
-                padding={{ top: 20, bottom: 20 }}
-              />
-              <Tooltip contentStyle={{ backgroundColor: isDarkMode ? '#0d1117' : '#ffffff', border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`, borderRadius: '6px', fontSize: '11px' }} />
-              <Bar dataKey="openClose" shape={<Candlestick />} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+        <ResponsiveContainer width="100%" height={300}>
+          <ComposedChart data={candlestickData}>
+            <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#30363d' : '#e5e7eb'} />
+            <XAxis 
+              dataKey="time" 
+              stroke={isDarkMode ? '#8b949e' : '#6b7280'} 
+              tick={{ fontSize: 10 }}
+            />
+            <YAxis 
+              domain={['dataMin', 'dataMax']} 
+              stroke={isDarkMode ? '#8b949e' : '#6b7280'} 
+              tick={{ fontSize: 10 }}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: isDarkMode ? '#161b22' : '#fff',
+                border: `1px solid ${isDarkMode ? '#30363d' : '#e5e7eb'}`,
+                borderRadius: '6px',
+                fontSize: '11px'
+              }}
+            />
+            <Bar 
+              dataKey="openClose" 
+              fill="#8884d8" 
+              shape={<Candlestick />}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
       </div>
     );
   }
@@ -475,4 +543,4 @@ const WidgetRenderer: React.FC<Props> = ({ data, config }) => {
   return null;
 };
 
-export default memo(WidgetRenderer);
+export default WidgetRenderer;
